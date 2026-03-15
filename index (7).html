@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en-PK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pakistan Animal Disease Radar — televet.pk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{
+  --bg:#04060a;--bg2:#060a0f;--bg3:#080e14;
+  --red:#ff3b4e;--red2:#ff6b7a;--red-glow:rgba(255,59,78,0.25);
+  --amber:#f59e0b;--amber2:#fbbf24;--amber-glow:rgba(245,158,11,0.25);
+  --green:#10b981;--green2:#34d399;--green-glow:rgba(16,185,129,0.2);
+  --teal:#00d4aa;--blue:#4f8ef7;
+  --text:#e8eaf0;--text-m:#9aa5b8;--text-d:#3a4a58;
+  --border:rgba(255,59,78,0.12);--border2:rgba(255,255,255,0.06);
+  --font-h:'Syne',sans-serif;--font-m:'DM Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:var(--font-m);display:flex;flex-direction:column;}
+
+/* scanlines */
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,59,78,0.008) 3px,rgba(255,59,78,0.008) 4px);}
+
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes ping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.8);opacity:0}}
+@keyframes ping2{0%{transform:scale(1);opacity:.4}100%{transform:scale(3.5);opacity:0}}
+@keyframes pulse-red{0%,100%{box-shadow:0 0 0 0 var(--red-glow)}50%{box-shadow:0 0 12px 4px var(--red-glow)}}
+@keyframes pulse-amber{0%,100%{box-shadow:0 0 0 0 var(--amber-glow)}50%{box-shadow:0 0 10px 3px var(--amber-glow)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+@keyframes alert-flash{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes slide-in{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes count-up{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+/* NAV */
+.nav{height:50px;background:rgba(4,6,10,0.98);border-bottom:1px solid rgba(255,59,78,0.15);display:flex;align-items:center;padding:0 16px;gap:14px;position:relative;z-index:1000;flex-shrink:0;}
+.n-logo-wrap{display:flex;align-items:center;gap:9px;}
+.n-logo-icon{width:28px;height:28px;border:1px solid rgba(255,59,78,0.4);border-radius:4px;display:flex;align-items:center;justify-content:center;position:relative;}
+.n-logo-icon::after{content:'';position:absolute;inset:0;border-radius:4px;animation:pulse-red 2s infinite;}
+.n-logo-icon svg{width:14px;height:14px;color:var(--red);}
+.n-title{font-family:var(--font-h);font-size:16px;font-weight:800;color:var(--text);letter-spacing:-.3px;white-space:nowrap;}
+.n-title em{color:var(--red);font-style:normal;}
+.n-sep{width:1px;height:18px;background:var(--border2);}
+.n-alert{display:flex;align-items:center;gap:6px;font-size:8px;letter-spacing:2.5px;color:var(--red);text-transform:uppercase;border:1px solid rgba(255,59,78,0.3);padding:3px 9px;border-radius:2px;animation:alert-flash 2s infinite;}
+.n-alert-dot{width:5px;height:5px;border-radius:50%;background:var(--red);animation:blink 1s infinite;}
+.n-tabs{display:flex;gap:1px;}
+.n-tab{font-family:var(--font-m);font-size:8px;letter-spacing:1.5px;text-transform:uppercase;padding:5px 11px;border-radius:2px;color:var(--text-d);cursor:pointer;border:1px solid transparent;transition:all .15s;}
+.n-tab.on{color:var(--red);border-color:rgba(255,59,78,0.25);background:rgba(255,59,78,0.06);}
+.n-tab:hover:not(.on){color:var(--text-m);border-color:var(--border2);}
+.n-right{margin-left:auto;display:flex;align-items:center;gap:18px;}
+.n-stats{display:flex;gap:18px;}
+.n-stat{display:flex;flex-direction:column;align-items:flex-end;gap:1px;}
+.n-lbl{font-size:7px;letter-spacing:2px;color:var(--text-d);text-transform:uppercase;}
+.n-val{font-family:var(--font-h);font-size:14px;font-weight:800;line-height:1;animation:count-up .4s ease;}
+.n-val.r{color:var(--red);}
+.n-val.a{color:var(--amber);}
+.n-val.g{color:var(--green);}
+.n-val.w{color:var(--text);}
+.n-cta{font-family:var(--font-m);font-size:8px;letter-spacing:1.5px;text-transform:uppercase;background:transparent;color:var(--red);padding:6px 14px;border-radius:2px;font-weight:500;border:1px solid rgba(255,59,78,0.4);cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:5px;transition:all .2s;white-space:nowrap;}
+.n-cta:hover{background:rgba(255,59,78,0.07);}
+.n-cta svg{width:10px;height:10px;}
+
+/* BODY */
+.body-wrap{flex:1;display:flex;overflow:hidden;position:relative;}
+
+/* MAP */
+.map-wrap{flex:1;position:relative;overflow:hidden;}
+#map{width:100%;height:100%;}
+.leaflet-tile{width:257px!important;height:257px!important;}
+.leaflet-tile-pane{filter:brightness(0.75) saturate(0.4) contrast(1.1);}
+.leaflet-control-attribution{display:none!important;}
+.leaflet-control-zoom{display:none!important;}
+
+/* POPUP */
+.leaflet-popup-content-wrapper{background:rgba(4,6,10,0.98)!important;border:1px solid rgba(255,59,78,0.2)!important;border-radius:4px!important;box-shadow:0 20px 60px rgba(0,0,0,0.9),0 0 20px rgba(255,59,78,0.1)!important;padding:0!important;}
+.leaflet-popup-content{margin:0!important;width:250px!important;}
+.leaflet-popup-tip-container{display:none!important;}
+.leaflet-popup-close-button{color:var(--text-d)!important;font-size:14px!important;top:10px!important;right:10px!important;}
+.leaflet-popup-close-button:hover{color:var(--text)!important;}
+
+.pu{padding:16px;}
+.pu-severity{font-size:8px;letter-spacing:2px;text-transform:uppercase;padding:2px 8px;border-radius:2px;display:inline-flex;align-items:center;gap:5px;margin-bottom:8px;}
+.pu-severity.critical,.pu-severity.high{background:rgba(255,59,78,0.12);color:var(--red);border:1px solid rgba(255,59,78,0.3);}
+.pu-severity.moderate{background:rgba(245,158,11,0.12);color:var(--amber);border:1px solid rgba(245,158,11,0.3);}
+.pu-severity.low,.pu-severity.monitoring{background:rgba(16,185,129,0.12);color:var(--green);border:1px solid rgba(16,185,129,0.3);}
+.pu-severity.unknown{background:rgba(255,255,255,0.05);color:var(--text-d);border:1px solid var(--border2);}
+.pu-sev-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
+.pu-name{font-family:var(--font-h);font-size:14px;font-weight:800;color:var(--text);margin-bottom:2px;}
+.pu-species{font-size:9px;color:var(--text-d);margin-bottom:10px;letter-spacing:.5px;}
+.pu-row{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--text-m);margin-bottom:4px;}
+.pu-row svg{flex-shrink:0;width:10px;height:10px;}
+.pu-notes{font-size:9px;color:var(--text-m);line-height:1.5;margin:8px 0 12px;padding:8px;background:rgba(255,255,255,0.03);border-radius:2px;border-left:2px solid var(--red);}
+.pu-btns{display:flex;gap:6px;}
+.pu-btn{flex:1;padding:7px;border-radius:2px;font-family:var(--font-m);font-size:8px;font-weight:500;letter-spacing:1px;text-transform:uppercase;text-align:center;text-decoration:none;cursor:pointer;border:none;transition:all .2s;}
+.pu-btn-primary{background:var(--red);color:#04060a;}
+.pu-btn-primary:hover{opacity:.85;}
+.pu-btn-ghost{background:transparent;color:var(--text-m);border:1px solid var(--border2);}
+.pu-btn-ghost:hover{border-color:rgba(255,59,78,0.3);color:var(--red);}
+
+/* PINS */
+.d-pin{position:relative;cursor:pointer;}
+.d-pin-core{border-radius:50%;border:1.5px solid;display:flex;align-items:center;justify-content:center;transition:transform .15s;}
+.d-pin-core:hover{transform:scale(1.3);}
+.d-pin-ring{position:absolute;border-radius:50%;border:1px solid;animation:ping 2.2s infinite;opacity:0;pointer-events:none;}
+.d-pin-ring2{animation:ping2 2.2s infinite .8s;opacity:0;pointer-events:none;position:absolute;border-radius:50%;border:1px solid;}
+.d-pin.critical .d-pin-core,.d-pin.high .d-pin-core{width:22px;height:22px;background:rgba(255,59,78,0.2);border-color:var(--red);animation:pulse-red 1.5s infinite;}
+.d-pin.critical .d-pin-ring,.d-pin.high .d-pin-ring{width:22px;height:22px;border-color:var(--red);top:-1px;left:-1px;}
+.d-pin.critical .d-pin-ring2,.d-pin.high .d-pin-ring2{width:22px;height:22px;border-color:var(--red);top:-1px;left:-1px;}
+.d-pin.moderate .d-pin-core{width:20px;height:20px;background:rgba(245,158,11,0.2);border-color:var(--amber);animation:pulse-amber 2s infinite;}
+.d-pin.moderate .d-pin-ring{width:20px;height:20px;border-color:var(--amber);top:-1px;left:-1px;}
+.d-pin.low .d-pin-core,.d-pin.monitoring .d-pin-core,.d-pin.unknown .d-pin-core{width:16px;height:16px;background:rgba(16,185,129,0.15);border-color:var(--green);}
+.d-pin.low .d-pin-ring,.d-pin.monitoring .d-pin-ring,.d-pin.unknown .d-pin-ring{width:16px;height:16px;border-color:var(--green);top:-1px;left:-1px;animation-duration:3s;}
+.d-pin svg{width:8px;height:8px;pointer-events:none;}
+
+/* PROVINCE HUD */
+.province-hud{position:absolute;top:12px;left:12px;z-index:500;display:flex;flex-direction:column;gap:4px;}
+.ph-row{background:rgba(4,6,10,0.9);border:1px solid rgba(255,59,78,0.12);padding:5px 10px;border-radius:2px;display:flex;align-items:center;gap:10px;font-size:8px;transition:border-color .2s;cursor:default;}
+.ph-row:hover{border-color:rgba(255,59,78,0.3);}
+.ph-code{font-family:var(--font-h);font-size:11px;font-weight:800;color:var(--red);min-width:28px;}
+.ph-name{color:var(--text-d);min-width:70px;}
+.ph-bar-wrap{width:44px;height:2px;background:rgba(255,255,255,0.05);border-radius:1px;overflow:hidden;}
+.ph-bar{height:100%;border-radius:1px;transition:width .8s ease;}
+.ph-count{color:var(--text-m);font-size:8px;min-width:16px;text-align:right;}
+.ph-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
+
+/* TOP RIGHT HUD */
+.map-hud-tr{position:absolute;top:12px;right:12px;z-index:500;display:flex;flex-direction:column;gap:4px;align-items:flex-end;}
+.hud-pill{background:rgba(4,6,10,0.9);border:1px solid var(--border2);border-radius:100px;padding:4px 10px;display:flex;align-items:center;gap:6px;font-size:8px;color:var(--text-d);letter-spacing:1px;}
+.hud-pill svg{width:9px;height:9px;}
+.hud-pill span{color:var(--text-m);}
+.hud-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
+
+/* ALERT POPUP — new alert notification */
+.alert-popup{position:absolute;top:12px;right:12px;z-index:600;background:rgba(4,6,10,0.97);border:1px solid rgba(255,59,78,0.35);border-radius:4px;padding:12px 14px;width:220px;animation:slide-in .4s ease;display:none;}
+.alert-popup.show{display:block;}
+.ap-head{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+.ap-dot{width:7px;height:7px;border-radius:50%;background:var(--red);animation:blink 1s infinite;flex-shrink:0;}
+.ap-label{font-size:8px;letter-spacing:2px;color:var(--red);text-transform:uppercase;}
+.ap-close{margin-left:auto;font-size:12px;color:var(--text-d);cursor:pointer;background:none;border:none;color:var(--text-d);}
+.ap-disease{font-family:var(--font-h);font-size:13px;font-weight:800;color:var(--text);margin-bottom:2px;}
+.ap-meta{font-size:9px;color:var(--text-d);}
+
+/* ZOOM */
+.zoom-ctrl{position:absolute;bottom:50px;right:12px;display:flex;flex-direction:column;gap:2px;z-index:500;}
+.zoom-btn{width:26px;height:26px;background:rgba(4,6,10,0.9);border:1px solid var(--border2);border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--text-d);cursor:pointer;font-family:monospace;line-height:1;transition:all .15s;user-select:none;}
+.zoom-btn:hover{color:var(--text-m);border-color:rgba(255,59,78,0.2);}
+
+/* SLIDE PANEL */
+.slide-panel{width:0;background:rgba(4,8,12,0.98);border-left:1px solid rgba(255,59,78,0.12);overflow:hidden;transition:width .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;flex-shrink:0;z-index:500;}
+.slide-panel.open{width:248px;}
+.sp-head{padding:12px 13px;border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.sp-head-icon svg{width:13px;height:13px;color:var(--red);}
+.sp-head-title{font-size:8px;letter-spacing:2.5px;color:var(--red);text-transform:uppercase;flex:1;white-space:nowrap;}
+.sp-head-count{font-family:var(--font-h);font-size:16px;font-weight:800;color:var(--text);line-height:1;}
+.sp-search{margin:9px 11px;background:rgba(255,255,255,0.03);border:1px solid var(--border2);border-radius:3px;padding:6px 9px;display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.sp-search svg{width:10px;height:10px;color:var(--text-d);flex-shrink:0;}
+.sp-search input{background:transparent;border:none;outline:none;font-family:var(--font-m);font-size:9px;color:var(--text);width:100%;}
+.sp-search input::placeholder{color:var(--text-d);}
+.sp-filters{display:flex;gap:3px;padding:0 11px 8px;flex-shrink:0;flex-wrap:wrap;}
+.sp-f{font-size:7px;letter-spacing:.8px;text-transform:uppercase;padding:3px 7px;border-radius:2px;border:1px solid var(--border2);color:var(--text-d);cursor:pointer;display:flex;align-items:center;gap:3px;transition:all .15s;font-family:var(--font-m);}
+.sp-f.on{border-color:rgba(255,59,78,0.4);color:var(--red);background:rgba(255,59,78,0.06);}
+.sp-f.on.amber{border-color:rgba(245,158,11,0.4);color:var(--amber);background:rgba(245,158,11,0.06);}
+.sp-f.on.green{border-color:rgba(16,185,129,0.4);color:var(--green);background:rgba(16,185,129,0.06);}
+.sp-f-dot{width:3px;height:3px;border-radius:50%;flex-shrink:0;}
+.sp-list{overflow-y:auto;flex:1;}
+.sp-list::-webkit-scrollbar{width:2px;}
+.sp-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.05);}
+.sp-item{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;align-items:flex-start;gap:8px;cursor:pointer;transition:all .12s;border-left:2px solid transparent;}
+.sp-item:hover{background:rgba(255,59,78,0.03);border-left-color:rgba(255,59,78,0.2);}
+.sp-item.active{background:rgba(255,59,78,0.05);border-left-color:var(--red);}
+.sp-item-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:3px;}
+.sp-item-info{flex:1;min-width:0;}
+.sp-item-name{font-size:10px;color:#c8d0e0;margin-bottom:2px;font-weight:500;}
+.sp-item-meta{font-size:8px;color:var(--text-d);display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
+.sp-item-sev{font-size:7px;letter-spacing:.8px;padding:1px 5px;border-radius:1px;border:1px solid;margin-left:auto;flex-shrink:0;text-transform:uppercase;}
+.sp-item-sev.r{border-color:rgba(255,59,78,0.3);color:var(--red);}
+.sp-item-sev.a{border-color:rgba(245,158,11,0.3);color:var(--amber);}
+.sp-item-sev.g{border-color:rgba(16,185,129,0.3);color:var(--green);}
+.sp-legend{border-top:1px solid var(--border2);padding:7px 12px;display:flex;gap:12px;flex-shrink:0;flex-wrap:wrap;}
+.sp-leg{display:flex;align-items:center;gap:4px;font-size:7px;color:var(--text-d);}
+.sp-leg-dot{width:4px;height:4px;border-radius:50%;flex-shrink:0;}
+.sp-empty{padding:20px;text-align:center;font-size:9px;color:var(--text-d);line-height:1.7;}
+.sp-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:8px;}
+.sp-spinner{width:20px;height:20px;border:1.5px solid rgba(255,255,255,0.05);border-top-color:var(--red);border-radius:50%;animation:spin 1s linear infinite;}
+.sp-loading-text{font-size:8px;color:var(--text-d);letter-spacing:1px;}
+
+/* ICON SIDEBAR */
+.icon-sidebar{width:44px;background:rgba(4,6,10,0.98);border-left:1px solid rgba(255,59,78,0.1);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:4px;flex-shrink:0;z-index:600;}
+.si{width:30px;height:30px;border-radius:3px;border:1px solid transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;position:relative;}
+.si svg{width:13px;height:13px;color:var(--text-d);transition:color .15s;}
+.si:hover{border-color:var(--border2);}
+.si:hover svg{color:var(--text-m);}
+.si.on{border-color:rgba(255,59,78,0.3);background:rgba(255,59,78,0.07);}
+.si.on svg{color:var(--red);}
+.si-badge{position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-size:7px;color:#04060a;font-weight:700;animation:pulse-red 1.5s infinite;}
+.si-sep{width:18px;height:1px;background:var(--border2);margin:3px 0;}
+.si-spacer{flex:1;}
+
+/* TICKER */
+.ticker{height:36px;background:rgba(4,6,10,0.98);border-top:1px solid rgba(255,59,78,0.12);display:flex;align-items:center;overflow:hidden;flex-shrink:0;position:relative;z-index:600;}
+.ticker-label{padding:0 14px;font-size:7px;letter-spacing:2.5px;color:var(--red);text-transform:uppercase;white-space:nowrap;border-right:1px solid rgba(255,59,78,0.12);height:100%;display:flex;align-items:center;gap:7px;flex-shrink:0;}
+.ticker-label-dot{width:5px;height:5px;border-radius:50%;background:var(--red);animation:blink 1s infinite;}
+.ticker-track{display:flex;animation:ticker 40s linear infinite;white-space:nowrap;}
+.ticker-track:hover{animation-play-state:paused;}
+.ticker-item{display:flex;align-items:center;gap:8px;padding:0 20px;font-size:8px;color:var(--text-m);border-right:1px solid var(--border2);white-space:nowrap;}
+.ticker-item-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
+.ticker-name{color:var(--text);font-weight:500;}
+.ticker-stats{margin-left:auto;display:flex;align-items:center;border-left:1px solid rgba(255,59,78,0.12);flex-shrink:0;}
+.ticker-stat{padding:0 13px;display:flex;align-items:center;gap:6px;border-right:1px solid var(--border2);height:36px;}
+.ticker-stat:last-child{border-right:none;}
+.ticker-stat-val{font-family:var(--font-h);font-size:15px;font-weight:800;line-height:1;}
+.ticker-stat-lbl{font-size:7px;letter-spacing:1.5px;color:var(--text-d);text-transform:uppercase;}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="n-logo-wrap">
+    <div class="n-logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      </svg>
+    </div>
+    <span class="n-title">Pakistan <em>Disease</em> Radar</span>
+  </div>
+  <div class="n-sep"></div>
+  <div class="n-alert"><div class="n-alert-dot"></div>Live monitoring</div>
+  <div class="n-tabs">
+    <div class="n-tab on" onclick="setTab(this)">Map</div>
+    <div class="n-tab" onclick="setTab(this)">List</div>
+    <div class="n-tab" onclick="setTab(this)">Alerts</div>
+  </div>
+  <div class="n-right">
+    <div class="n-stats">
+      <div class="n-stat"><div class="n-lbl">Alerts</div><div class="n-val r" id="stat-total">—</div></div>
+      <div class="n-stat"><div class="n-lbl">Critical</div><div class="n-val r" id="stat-critical">—</div></div>
+      <div class="n-stat"><div class="n-lbl">Provinces</div><div class="n-val a" id="stat-provinces">—</div></div>
+      <div class="n-stat"><div class="n-lbl">Species</div><div class="n-val w" id="stat-species">—</div></div>
+    </div>
+    <div class="n-sep"></div>
+    <a class="n-cta" href="https://televet.pk" target="_blank">
+      Book Vet
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </a>
+  </div>
+</nav>
+
+<div class="body-wrap">
+  <div class="map-wrap">
+    <div id="map"></div>
+
+    <!-- Province HUD -->
+    <div class="province-hud" id="province-hud"></div>
+
+    <!-- Top right HUD -->
+    <div class="map-hud-tr" id="map-hud-tr">
+      <div class="hud-pill"><div class="hud-dot" style="background:var(--red);animation:blink 1s infinite"></div>Live · <span id="hud-time">—</span></div>
+      <div class="hud-pill">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        Pakistan only
+      </div>
+    </div>
+
+    <!-- Alert popup -->
+    <div class="alert-popup" id="alert-popup">
+      <div class="ap-head">
+        <div class="ap-dot"></div>
+        <div class="ap-label">New alert</div>
+        <button class="ap-close" onclick="document.getElementById('alert-popup').classList.remove('show')">×</button>
+      </div>
+      <div class="ap-disease" id="ap-disease">—</div>
+      <div class="ap-meta" id="ap-meta">—</div>
+    </div>
+
+    <!-- Zoom -->
+    <div class="zoom-ctrl">
+      <div class="zoom-btn" onclick="map.zoomIn()">+</div>
+      <div class="zoom-btn" onclick="map.zoomOut()">−</div>
+    </div>
+  </div>
+
+  <!-- Slide panel -->
+  <div class="slide-panel open" id="sp">
+    <div class="sp-head">
+      <div class="sp-head-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+      <div class="sp-head-title">Disease Alerts</div>
+      <div class="sp-head-count" id="sp-count">—</div>
+    </div>
+    <div class="sp-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input id="search-input" placeholder="Search disease, province..." oninput="onSearch(this.value)">
+    </div>
+    <div class="sp-filters">
+      <div class="sp-f on" onclick="setFilter('all',this)"><div class="sp-f-dot" style="background:var(--red)"></div>All</div>
+      <div class="sp-f" onclick="setFilter('critical',this)" style=""><div class="sp-f-dot" style="background:var(--red)"></div>Critical</div>
+      <div class="sp-f" onclick="setFilter('moderate',this)"><div class="sp-f-dot" style="background:var(--amber)"></div>Moderate</div>
+      <div class="sp-f" onclick="setFilter('low',this)"><div class="sp-f-dot" style="background:var(--green)"></div>Low</div>
+    </div>
+    <div class="sp-list" id="sp-list">
+      <div class="sp-loading"><div class="sp-spinner"></div><div class="sp-loading-text">Scanning sources...</div></div>
+    </div>
+    <div class="sp-legend">
+      <div class="sp-leg"><div class="sp-leg-dot" style="background:var(--red)"></div>Critical / High</div>
+      <div class="sp-leg"><div class="sp-leg-dot" style="background:var(--amber)"></div>Moderate</div>
+      <div class="sp-leg"><div class="sp-leg-dot" style="background:var(--green)"></div>Low / Monitoring</div>
+    </div>
+  </div>
+
+  <!-- Icon sidebar -->
+  <div class="icon-sidebar">
+    <div class="si on" id="si-list" onclick="togglePanel()" title="Alerts">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div class="si-badge" id="si-badge">0</div>
+    </div>
+    <div class="si-sep"></div>
+    <div class="si" title="televet.pk" onclick="window.open('https://televet.pk','_blank')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+    </div>
+    <div class="si-spacer"></div>
+    <div class="si" title="Refresh" onclick="loadData()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </div>
+  </div>
+</div>
+
+<!-- TICKER -->
+<div class="ticker">
+  <div class="ticker-label"><div class="ticker-label-dot"></div>Disease Alerts</div>
+  <div style="flex:1;overflow:hidden;position:relative;">
+    <div class="ticker-track" id="ticker-track">
+      <div class="ticker-item" style="color:var(--text-d);font-size:8px;letter-spacing:1px;">Scanning Pakistan news sources...</div>
+    </div>
+  </div>
+  <div class="ticker-stats">
+    <div class="ticker-stat"><div class="ticker-stat-val" id="ts-total" style="color:var(--red)">—</div><div class="ticker-stat-lbl">Alerts</div></div>
+    <div class="ticker-stat"><div class="ticker-stat-val" id="ts-critical" style="color:var(--red)">—</div><div class="ticker-stat-lbl">Critical</div></div>
+    <div class="ticker-stat"><div class="ticker-stat-val" id="ts-provinces" style="color:var(--amber)">—</div><div class="ticker-stat-lbl">Provinces</div></div>
+    <div class="ticker-stat"><div class="ticker-stat-val" id="ts-species" style="color:var(--text)">—</div><div class="ticker-stat-lbl">Species</div></div>
+  </div>
+</div>
+
+<script>
+const CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR1-EgPXONyAhvksCXKHa_8k58oZpNXFw3w9yDXcHjSSha_tfWecK0PSD05_WkOwhX4VQmxGSgfv7O3/pub?gid=0&single=true&output=csv";
+
+let allAlerts=[], markers=[], map=null;
+let activeFilter="all", searchTerm="", activeCard=null, lastLoaded=null, panelOpen=true;
+
+const PROVINCE_COORDS = {
+  "Punjab":      [31.1704,72.7097],
+  "Sindh":       [25.8943,68.5247],
+  "KPK":         [34.0151,71.5249],
+  "Balochistan": [28.4907,65.0958],
+  "Islamabad":   [33.6844,73.0479],
+  "AJK":         [33.9260,73.7691],
+  "GB":          [35.8026,74.9875],
+  "Multiple":    [30.3753,69.3451],
+};
+
+const PROVINCE_CODES = {
+  "Punjab":"PJB","Sindh":"SND","KPK":"KPK","Balochistan":"BLN",
+  "Islamabad":"ISB","AJK":"AJK","GB":"GB","Multiple":"MLT"
+};
+
+function getSeverityClass(sev) {
+  if (!sev) return "unknown";
+  const s = sev.toLowerCase();
+  if (s === "critical") return "critical";
+  if (s === "high") return "high";
+  if (s === "moderate") return "moderate";
+  if (s === "low") return "low";
+  if (s === "monitoring") return "monitoring";
+  return "unknown";
+}
+
+function getSeverityColor(sev) {
+  const s = getSeverityClass(sev);
+  if (s === "critical" || s === "high") return "var(--red)";
+  if (s === "moderate") return "var(--amber)";
+  return "var(--green)";
+}
+
+function getSeverityLetter(sev) {
+  const s = getSeverityClass(sev);
+  if (s === "critical" || s === "high") return "r";
+  if (s === "moderate") return "a";
+  return "g";
+}
+
+function initMap() {
+  map = L.map('map', {
+    center: [30.3753, 69.3451], zoom: 6,
+    zoomControl: false, minZoom: 5, maxZoom: 15,
+    maxBounds: [[23,60],[37,78]], maxBoundsViscosity: 1.0
+  });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '', maxZoom: 18, subdomains: 'abcd'
+  }).addTo(map);
+}
+
+async function loadData() {
+  showLoading();
+  try {
+    const r = await fetch(CSV);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const t = await r.text();
+    allAlerts = parseCSV(t);
+    lastLoaded = new Date();
+    renderAll();
+    updateStats();
+    updateHud();
+    buildProvinceHud();
+    buildTicker();
+    showLatestAlert();
+  } catch(e) {
+    console.error(e);
+    showEmpty("Could not load alerts.");
+  }
+}
+
+function parseCSV(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+  if (lines.length < 2) return [];
+  const headers = splitLine(lines[0]);
+  const alerts = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = splitLine(lines[i]);
+    const row = {};
+    headers.forEach((h, idx) => { row[h.trim()] = (vals[idx] || '').trim(); });
+    const prov = row["Province"] || "Unknown";
+    const coords = getCoords(prov);
+    alerts.push({
+      disease:  row["Disease Name"] || "Unknown",
+      species:  row["Species"]      || "Unknown",
+      province: prov,
+      city:     row["City"]         || "",
+      severity: row["Severity"]     || "Unknown",
+      status:   row["Status"]       || "Unknown",
+      url:      row["Source URL"]   || "",
+      dateRep:  row["Date Reported"]|| "",
+      dateScr:  row["Date Scraped"] || "",
+      notes:    row["Notes"]        || "",
+      coords,
+    });
+  }
+  return alerts;
+}
+
+function splitLine(line) {
+  const res = []; let cur = ""; let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { q = !q; }
+    else if (c === ',' && !q) { res.push(cur); cur = ""; }
+    else { cur += c; }
+  }
+  res.push(cur); return res;
+}
+
+function getCoords(province) {
+  for (const [name, coords] of Object.entries(PROVINCE_COORDS)) {
+    if (province && province.includes(name)) {
+      return [coords[0] + (Math.random()-.5)*.6, coords[1] + (Math.random()-.5)*.6];
+    }
+  }
+  return [30.3753 + (Math.random()-.5)*5, 69.3451 + (Math.random()-.5)*5];
+}
+
+function getFiltered() {
+  return allAlerts.filter(a => {
+    const sc = getSeverityClass(a.severity);
+    const mf = activeFilter === "all"
+      || (activeFilter === "critical" && (sc === "critical" || sc === "high"))
+      || (activeFilter === "moderate" && sc === "moderate")
+      || (activeFilter === "low" && (sc === "low" || sc === "monitoring" || sc === "unknown"));
+    const q = searchTerm.toLowerCase();
+    const ms = !q || a.disease.toLowerCase().includes(q) || a.province.toLowerCase().includes(q) || a.species.toLowerCase().includes(q) || a.city.toLowerCase().includes(q);
+    return mf && ms;
+  });
+}
+
+function renderAll() { renderList(); renderPins(); }
+
+function renderList() {
+  const alerts = getFiltered();
+  const el = document.getElementById('sp-list');
+  document.getElementById('sp-count').textContent = alerts.length || '—';
+  document.getElementById('si-badge').textContent = allAlerts.filter(a => getSeverityClass(a.severity) === "critical" || getSeverityClass(a.severity) === "high").length || 0;
+  if (!alerts.length) { el.innerHTML = '<div class="sp-empty">No alerts match this filter</div>'; return; }
+
+  el.innerHTML = alerts.map((a, i) => {
+    const sc = getSeverityClass(a.severity);
+    const clr = getSeverityColor(a.severity);
+    const sl = getSeverityLetter(a.severity);
+    return `<div class="sp-item" id="card-${i}" onclick="focusAlert(${i})" style="border-left-color:${clr}">
+      <div class="sp-item-dot" style="background:${clr}"></div>
+      <div class="sp-item-info">
+        <div class="sp-item-name">${esc(a.disease)}</div>
+        <div class="sp-item-meta">
+          <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          ${esc(a.province)}${a.city && a.city !== 'Unknown' ? ', ' + esc(a.city) : ''}
+          · ${esc(a.species)}
+        </div>
+      </div>
+      <div class="sp-item-sev ${sl}">${esc(a.severity)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderPins() {
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  getFiltered().forEach((a, i) => {
+    if (!a.coords) return;
+    const sc = getSeverityClass(a.severity);
+    const clr = sc === 'critical' || sc === 'high' ? '#ff3b4e' : sc === 'moderate' ? '#f59e0b' : '#10b981';
+    const size = sc === 'critical' || sc === 'high' ? 22 : sc === 'moderate' ? 20 : 16;
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="d-pin ${sc}" style="width:${size}px;height:${size}px;">
+        <div class="d-pin-ring" style="width:${size}px;height:${size}px;border-color:${clr};top:-1px;left:-1px;"></div>
+        ${sc==='critical'||sc==='high' ? `<div class="d-pin-ring2" style="width:${size}px;height:${size}px;border-color:${clr};top:-1px;left:-1px;"></div>` : ''}
+        <div class="d-pin-core" style="width:${size}px;height:${size}px;background:${clr}22;border:1.5px solid ${clr};">
+          <svg viewBox="0 0 24 24" fill="none" stroke="${clr}" stroke-width="2.5" style="width:${Math.round(size*.45)}px;height:${Math.round(size*.45)}px;">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+      </div>`,
+      iconSize: [size, size], iconAnchor: [size/2, size/2]
+    });
+    const marker = L.marker(a.coords, { icon }).addTo(map).bindPopup(makePopup(a), { maxWidth: 270, closeButton: true });
+    marker.on('click', () => highlightCard(i));
+    markers.push(marker);
+  });
+}
+
+function makePopup(a) {
+  const sc = getSeverityClass(a.severity);
+  const clr = getSeverityColor(a.severity);
+  return `<div class="pu">
+    <div class="pu-severity ${sc}"><div class="pu-sev-dot"></div>${esc(a.severity)} · ${esc(a.status)}</div>
+    <div class="pu-name">${esc(a.disease)}</div>
+    <div class="pu-species">${esc(a.species)}</div>
+    <div class="pu-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>${esc(a.province)}${a.city && a.city !== 'Unknown' ? ', ' + esc(a.city) : ''}</div>
+    ${a.dateRep ? `<div class="pu-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Reported: ${esc(a.dateRep)}</div>` : ''}
+    ${a.notes ? `<div class="pu-notes">${esc(a.notes)}</div>` : ''}
+    <div class="pu-btns">
+      <a class="pu-btn pu-btn-primary" href="https://televet.pk" target="_blank">Book Vet →</a>
+      ${a.url ? `<a class="pu-btn pu-btn-ghost" href="${esc(a.url)}" target="_blank">Source</a>` : ''}
+    </div>
+  </div>`;
+}
+
+function buildProvinceHud() {
+  const counts = {};
+  allAlerts.forEach(a => {
+    const prov = a.province;
+    if (!counts[prov]) counts[prov] = { total: 0, critical: 0 };
+    counts[prov].total++;
+    if (getSeverityClass(a.severity) === 'critical' || getSeverityClass(a.severity) === 'high') counts[prov].critical++;
+  });
+  const sorted = Object.entries(counts).sort((a,b) => b[1].total - a[1].total).slice(0, 5);
+  const max = sorted[0]?.[1]?.total || 1;
+  const el = document.getElementById('province-hud');
+  el.innerHTML = sorted.map(([name, d]) => {
+    const hasCritical = d.critical > 0;
+    const barColor = hasCritical ? 'var(--red)' : d.total > 2 ? 'var(--amber)' : 'var(--green)';
+    return `<div class="ph-row">
+      <div class="ph-code" style="color:${barColor}">${PROVINCE_CODES[name] || name.slice(0,3).toUpperCase()}</div>
+      <div class="ph-name">${name}</div>
+      <div class="ph-bar-wrap"><div class="ph-bar" style="width:${Math.round(d.total/max*100)}%;background:${barColor}"></div></div>
+      <div class="ph-count">${d.total}</div>
+      ${hasCritical ? `<div class="ph-dot" style="background:var(--red);animation:blink 1s infinite"></div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function buildTicker() {
+  if (!allAlerts.length) return;
+  const items = allAlerts.map(a => {
+    const clr = getSeverityColor(a.severity);
+    return `<div class="ticker-item">
+      <div class="ticker-item-dot" style="background:${clr}"></div>
+      <span class="ticker-name">${esc(a.disease)}</span>
+      <span style="color:var(--text-d)">·</span>
+      <span>${esc(a.species)}</span>
+      <span style="color:var(--text-d)">·</span>
+      <span style="color:var(--text-d)">${esc(a.province)}</span>
+      <span style="color:var(--text-d)">·</span>
+      <span style="color:${clr}">${esc(a.severity)}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('ticker-track').innerHTML = items + items;
+}
+
+function showLatestAlert() {
+  const critical = allAlerts.find(a => getSeverityClass(a.severity) === 'critical' || getSeverityClass(a.severity) === 'high');
+  if (!critical) return;
+  document.getElementById('ap-disease').textContent = critical.disease;
+  document.getElementById('ap-meta').textContent = critical.species + ' · ' + critical.province + ' · ' + critical.severity;
+  const popup = document.getElementById('alert-popup');
+  // Move below HUD pills
+  popup.style.top = '72px';
+  popup.classList.add('show');
+  setTimeout(() => popup.classList.remove('show'), 5000);
+}
+
+function focusAlert(i) {
+  const a = getFiltered()[i];
+  if (!a?.coords) return;
+  highlightCard(i);
+  map.flyTo(a.coords, 9, { duration: 1.0 });
+  if (markers[i]) markers[i].openPopup();
+}
+
+function highlightCard(i) {
+  if (activeCard !== null) document.getElementById(`card-${activeCard}`)?.classList.remove('active');
+  activeCard = i;
+  const el = document.getElementById(`card-${i}`);
+  if (el) { el.classList.add('active'); el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+}
+
+function setFilter(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.sp-f').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  activeCard = null;
+  renderAll();
+}
+
+function onSearch(val) { searchTerm = val; activeCard = null; renderAll(); }
+function setTab(btn) { document.querySelectorAll('.n-tab').forEach(b => b.classList.remove('on')); btn.classList.add('on'); }
+
+function togglePanel() {
+  panelOpen = !panelOpen;
+  document.getElementById('sp').classList.toggle('open', panelOpen);
+  document.getElementById('si-list').classList.toggle('on', panelOpen);
+  setTimeout(() => map.invalidateSize(), 300);
+}
+
+function updateStats() {
+  const total = allAlerts.length;
+  const critical = allAlerts.filter(a => getSeverityClass(a.severity) === 'critical' || getSeverityClass(a.severity) === 'high').length;
+  const provinces = new Set(allAlerts.map(a => a.province).filter(Boolean)).size;
+  const species = new Set(allAlerts.map(a => a.species).filter(p => p && p !== 'Unknown')).size;
+  ['total','critical','provinces','species'].forEach((k,idx) => {
+    const v = [total,critical,provinces,species][idx];
+    document.getElementById('stat-'+k).textContent = v || '—';
+    document.getElementById('ts-'+k).textContent = v || '—';
+  });
+  document.getElementById('si-badge').textContent = critical || 0;
+}
+
+function updateHud() {
+  if (!lastLoaded) return;
+  const diff = Math.floor((Date.now() - lastLoaded) / 60000);
+  document.getElementById('hud-time').textContent = diff < 1 ? 'just now' : diff < 60 ? diff + 'm ago' : Math.floor(diff/60) + 'h ago';
+}
+
+function showLoading() {
+  document.getElementById('sp-list').innerHTML = '<div class="sp-loading"><div class="sp-spinner"></div><div class="sp-loading-text">Scanning sources...</div></div>';
+}
+
+function showEmpty(msg) {
+  document.getElementById('sp-list').innerHTML = `<div class="sp-empty">${msg}</div>`;
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+initMap();
+loadData();
+setInterval(updateHud, 60000);
+setInterval(loadData, 300000); // auto-refresh every 5 minutes
+</script>
+</body>
+</html>

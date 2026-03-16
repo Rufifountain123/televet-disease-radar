@@ -215,6 +215,21 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 .ticker-stat:last-child{border-right:none;}
 .ticker-stat-val{font-family:var(--font-h);font-size:15px;font-weight:800;line-height:1;}
 .ticker-stat-lbl{font-size:7px;letter-spacing:1.5px;color:var(--text-d);text-transform:uppercase;}
+
+/* HEATMAP TOGGLE */
+.heatmap-toggle{position:absolute;bottom:50px;left:12px;z-index:500;display:flex;flex-direction:column;gap:3px;}
+.hm-btn{background:rgba(4,6,10,0.92);border:1px solid var(--border2);border-radius:2px;padding:5px 10px;font-family:var(--font-m);font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-d);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px;white-space:nowrap;}
+.hm-btn:hover{color:var(--text-m);border-color:rgba(255,59,78,0.2);}
+.hm-btn.on{color:var(--red);border-color:rgba(255,59,78,0.35);background:rgba(255,59,78,0.06);}
+.hm-btn svg{width:10px;height:10px;flex-shrink:0;}
+/* Heatmap legend */
+.hm-legend{position:absolute;bottom:96px;left:12px;z-index:500;background:rgba(4,6,10,0.92);border:1px solid var(--border2);border-radius:2px;padding:8px 10px;display:none;}
+.hm-legend.show{display:block;}
+.hm-legend-title{font-size:7px;letter-spacing:2px;color:var(--text-d);text-transform:uppercase;margin-bottom:7px;}
+.hm-legend-row{display:flex;align-items:center;gap:7px;margin-bottom:4px;font-size:8px;color:var(--text-m);}
+.hm-legend-row:last-child{margin-bottom:0;}
+.hm-swatch{width:24px;height:8px;border-radius:1px;}
+
 </style>
 </head>
 <body>
@@ -253,6 +268,27 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 <div class="body-wrap">
   <div class="map-wrap">
     <div id="map"></div>
+
+
+    <!-- Heatmap toggle -->
+    <div class="heatmap-toggle">
+      <div class="hm-btn on" id="btn-pins" onclick="setView('pins')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 10-16 0c0 3 2.7 6.9 8 11.7z"/></svg>
+        Pins
+      </div>
+      <div class="hm-btn" id="btn-heat" onclick="setView('heatmap')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        Heatmap
+      </div>
+    </div>
+    <!-- Heatmap legend -->
+    <div class="hm-legend" id="hm-legend">
+      <div class="hm-legend-title">Risk Level</div>
+      <div class="hm-legend-row"><div class="hm-swatch" style="background:rgba(255,59,78,0.65)"></div>Critical / High</div>
+      <div class="hm-legend-row"><div class="hm-swatch" style="background:rgba(245,158,11,0.55)"></div>Moderate</div>
+      <div class="hm-legend-row"><div class="hm-swatch" style="background:rgba(16,185,129,0.4)"></div>Low / Monitoring</div>
+      <div class="hm-legend-row"><div class="hm-swatch" style="background:rgba(255,255,255,0.04)"></div>No alerts</div>
+    </div>
 
     <!-- Province HUD -->
     <div class="province-hud" id="province-hud"></div>
@@ -416,6 +452,7 @@ async function loadData() {
     buildProvinceHud();
     buildTicker();
     showLatestAlert();
+    if(currentView === "heatmap") buildHeatmap();
   } catch(e) {
     console.error(e);
     showEmpty("Could not load alerts.");
@@ -484,7 +521,7 @@ function getFiltered() {
   });
 }
 
-function renderAll() { renderList(); renderPins(); }
+function renderAll() { renderList(); if(currentView === "heatmap") { heatmapLayers.forEach(l=>map.removeLayer(l)); heatmapLayers=[]; buildHeatmap(); } else { renderPins(); } }
 
 function renderList() {
   const alerts = getFiltered();
@@ -674,6 +711,162 @@ function showEmpty(msg) {
 function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+
+// ── PROVINCE POLYGONS (simplified boundaries) ──
+const PROVINCE_POLYGONS = {
+  "Punjab": [
+    [33.09,73.93],[33.73,74.46],[34.01,74.73],[34.19,74.08],[34.36,73.21],
+    [34.10,72.21],[33.77,71.94],[33.22,71.64],[32.70,71.52],[32.20,71.50],
+    [31.80,71.48],[31.22,71.70],[30.77,71.52],[30.25,71.10],[29.98,70.62],
+    [29.60,70.55],[29.50,71.00],[29.38,71.38],[29.30,72.00],[29.40,72.70],
+    [29.60,73.20],[29.97,73.60],[30.45,73.89],[30.90,74.05],[31.30,74.20],
+    [31.72,74.33],[32.05,74.51],[32.48,74.63],[32.92,74.46],[33.09,73.93]
+  ],
+  "Sindh": [
+    [28.42,69.47],[28.16,69.09],[27.73,68.79],[27.32,68.28],[26.98,67.97],
+    [26.57,67.56],[26.00,67.10],[25.50,66.82],[25.10,66.52],[24.86,66.78],
+    [24.56,67.08],[24.32,67.52],[24.10,68.18],[23.99,68.88],[24.03,69.58],
+    [24.19,70.20],[24.42,70.65],[24.74,70.90],[25.07,71.05],[25.45,71.00],
+    [25.84,70.92],[26.25,70.86],[26.62,70.85],[27.00,70.93],[27.38,70.90],
+    [27.77,70.74],[28.10,70.45],[28.35,70.10],[28.55,69.72],[28.42,69.47]
+  ],
+  "KPK": [
+    [36.95,71.63],[36.68,72.31],[36.30,72.64],[35.95,72.57],[35.68,72.25],
+    [35.40,71.93],[35.11,71.63],[34.80,71.38],[34.55,71.07],[34.36,70.74],
+    [34.19,70.33],[34.01,70.07],[33.77,69.85],[33.52,69.75],[33.22,70.09],
+    [33.09,70.55],[32.93,70.90],[32.72,71.12],[32.38,71.26],[32.10,71.44],
+    [32.20,71.50],[32.70,71.52],[33.22,71.64],[33.77,71.94],[34.10,72.21],
+    [34.36,73.21],[34.74,73.00],[35.00,72.63],[35.30,72.30],[35.60,72.05],
+    [35.92,71.85],[36.25,71.82],[36.58,71.72],[36.95,71.63]
+  ],
+  "Balochistan": [
+    [29.38,71.38],[29.30,72.00],[29.40,72.70],[28.55,69.72],[28.35,70.10],
+    [28.10,70.45],[27.77,70.74],[27.38,70.90],[27.00,70.93],[26.62,70.85],
+    [26.25,70.86],[25.84,70.92],[25.45,71.00],[25.07,71.05],[24.74,70.90],
+    [24.42,70.65],[24.19,70.20],[24.03,69.58],[23.99,68.88],[24.10,68.18],
+    [24.32,67.52],[24.56,67.08],[24.86,66.78],[25.10,66.52],[25.44,65.73],
+    [25.72,64.87],[26.00,64.22],[26.37,63.58],[26.72,62.84],[27.01,62.37],
+    [27.43,61.81],[27.84,61.26],[28.27,61.00],[28.73,61.00],[29.14,61.28],
+    [29.54,61.76],[29.89,62.43],[30.16,63.00],[30.38,63.55],[30.58,64.08],
+    [30.76,64.62],[30.93,65.10],[31.11,65.55],[31.30,65.98],[31.49,66.32],
+    [31.72,66.57],[32.01,66.67],[32.26,66.60],[32.47,66.41],[32.67,66.22],
+    [32.93,65.98],[33.15,65.78],[33.38,65.54],[33.52,65.25],[33.52,64.96],
+    [33.45,64.55],[33.38,64.18],[33.22,63.80],[33.09,63.50],[32.96,63.23],
+    [32.82,63.00],[32.68,62.80],[32.58,62.60],[32.50,62.35],[32.50,62.00],
+    [32.58,61.73],[32.72,61.50],[32.93,61.30],[33.09,69.75],[33.22,70.09],
+    [33.52,69.75],[33.77,69.85],[34.01,70.07],[34.19,70.33],[34.36,70.74],
+    [34.55,71.07],[34.80,71.38],[35.11,71.63],[34.36,71.38],[33.77,71.52],
+    [33.22,71.22],[32.70,71.10],[32.20,71.10],[31.80,71.00],[31.22,71.30],
+    [30.77,71.12],[30.25,70.80],[29.98,70.32],[29.60,70.20],[29.50,70.62],
+    [29.38,71.38]
+  ],
+  "Islamabad": [
+    [33.80,72.80],[33.85,73.30],[33.55,73.35],[33.48,72.85],[33.80,72.80]
+  ],
+  "AJK": [
+    [34.19,74.08],[34.36,74.55],[34.60,74.90],[34.85,75.15],[35.10,75.00],
+    [35.05,74.45],[34.80,74.00],[34.50,73.70],[34.19,74.08]
+  ],
+  "GB": [
+    [36.95,71.63],[36.58,71.72],[36.25,71.82],[35.92,71.85],[35.60,72.05],
+    [35.30,72.30],[35.00,72.63],[34.74,73.00],[35.10,75.00],[35.40,75.50],
+    [35.80,76.20],[36.20,76.80],[36.60,77.40],[37.00,77.80],[37.40,77.50],
+    [37.60,76.80],[37.50,76.00],[37.40,75.20],[37.30,74.40],[37.20,73.80],
+    [37.10,73.10],[36.95,71.63]
+  ]
+};
+
+let heatmapLayers = [];
+let currentView = 'pins';
+
+function buildHeatmap() {
+  // Remove existing heatmap layers
+  heatmapLayers.forEach(l => map.removeLayer(l));
+  heatmapLayers = [];
+
+  // Count alerts per province with severity weighting
+  const provStats = {};
+  allAlerts.forEach(a => {
+    const p = a.province;
+    if (!provStats[p]) provStats[p] = { score: 0, critical: 0, moderate: 0, low: 0, total: 0 };
+    const sc = getSeverityClass(a.severity);
+    if (sc === 'critical' || sc === 'high') { provStats[p].score += 3; provStats[p].critical++; }
+    else if (sc === 'moderate') { provStats[p].score += 2; provStats[p].moderate++; }
+    else { provStats[p].score += 1; provStats[p].low++; }
+    provStats[p].total++;
+  });
+
+  const maxScore = Math.max(...Object.values(provStats).map(s => s.score), 1);
+
+  // Draw each province
+  Object.entries(PROVINCE_POLYGONS).forEach(([name, coords]) => {
+    const stats = provStats[name];
+    let fillColor, fillOpacity, borderColor, borderOpacity;
+
+    if (!stats || stats.total === 0) {
+      fillColor = '#ffffff'; fillOpacity = 0.03;
+      borderColor = '#ffffff'; borderOpacity = 0.06;
+    } else if (stats.critical > 0) {
+      const intensity = Math.min(0.25 + (stats.score / maxScore) * 0.45, 0.7);
+      fillColor = '#ff3b4e'; fillOpacity = intensity;
+      borderColor = '#ff3b4e'; borderOpacity = 0.8;
+    } else if (stats.moderate > 0) {
+      const intensity = Math.min(0.2 + (stats.score / maxScore) * 0.35, 0.55);
+      fillColor = '#f59e0b'; fillOpacity = intensity;
+      borderColor = '#f59e0b'; borderOpacity = 0.7;
+    } else {
+      const intensity = Math.min(0.15 + (stats.score / maxScore) * 0.25, 0.4);
+      fillColor = '#10b981'; fillOpacity = intensity;
+      borderColor = '#10b981'; borderOpacity = 0.6;
+    }
+
+    const latlngs = coords.map(c => [c[0], c[1]]);
+    const poly = L.polygon(latlngs, {
+      fillColor, fillOpacity,
+      color: borderColor, opacity: borderOpacity,
+      weight: 1.5,
+      interactive: true
+    }).addTo(map);
+
+    // Click shows province summary
+    if (stats) {
+      poly.bindPopup(`<div class="pu">
+        <div class="pu-severity ${stats.critical > 0 ? 'critical' : stats.moderate > 0 ? 'moderate' : 'low'}">
+          <div class="pu-sev-dot"></div>${stats.critical > 0 ? 'Critical alerts present' : stats.moderate > 0 ? 'Moderate risk' : 'Low risk'}
+        </div>
+        <div class="pu-name">${name}</div>
+        <div class="pu-species" style="margin-bottom:8px;">${stats.total} alert${stats.total !== 1 ? 's' : ''} in last 90 days</div>
+        ${stats.critical > 0 ? `<div class="pu-row"><svg viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg>${stats.critical} critical / high</div>` : ''}
+        ${stats.moderate > 0 ? `<div class="pu-row"><svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg>${stats.moderate} moderate</div>` : ''}
+        ${stats.low > 0 ? `<div class="pu-row"><svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" style="width:10px;height:10px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg>${stats.low} low / monitoring</div>` : ''}
+        <div class="pu-btns" style="margin-top:10px;">
+          <a class="pu-btn pu-btn-primary" href="https://televet.pk" target="_blank">Book Vet →</a>
+        </div>
+      </div>`, { maxWidth: 270, closeButton: true });
+    }
+
+    heatmapLayers.push(poly);
+  });
+}
+
+function setView(mode) {
+  currentView = mode;
+  document.getElementById('btn-pins').classList.toggle('on', mode === 'pins');
+  document.getElementById('btn-heat').classList.toggle('on', mode === 'heatmap');
+  document.getElementById('hm-legend').classList.toggle('show', mode === 'heatmap');
+
+  if (mode === 'heatmap') {
+    // Show heatmap, hide individual pins
+    markers.forEach(m => map.removeLayer(m));
+    buildHeatmap();
+  } else {
+    // Show pins, hide heatmap
+    heatmapLayers.forEach(l => map.removeLayer(l));
+    heatmapLayers = [];
+    renderPins();
+  }
 }
 
 initMap();
